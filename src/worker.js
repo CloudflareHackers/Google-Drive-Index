@@ -39,6 +39,7 @@ const authConfig = {
   "enable_ip_lock": false, // set to true if you want to lock user downloads to user IP
   "single_session": false, // set to true if you want to allow only one session per user
   "ip_changed_action": false, // set to true if you want to logout user if IP changed
+  "cors_domain": "*", // CORS domain for API requests, use * for all domains or specify your domain
   "users_list": [{
       "username": "admin",
       "password": "admin",
@@ -182,7 +183,7 @@ const homepage = `<!DOCTYPE html>
      <div id="nav">
       <nav class="navbar navbar-expand-lg${uiConfig.fixed_header ?' fixed-top': ''} ${uiConfig.header_style_class}">
          <div class="container-fluid">
-         <a class="navbar-brand" href="/">${uiConfig.logo_image ? '<img border="0" alt="'+uiConfig.company_name+'" src="'+uiConfig.logo_link_name+'" height="'+uiConfig.height+'" width="'+uiConfig.logo_width+'">' : uiConfig.logo_link_name}</a>
+         <a class="navbar-brand" href="/">${uiConfig.logo_image ? '<img border="0" alt="'+uiConfig.company_name+'" src="'+uiConfig.logo_link_name+'" height="'+uiConfig.logo_height+'" width="'+uiConfig.logo_width+'">' : uiConfig.logo_link_name}</a>
           <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
           <span class="navbar-toggler-icon"></span>
           </button>
@@ -792,7 +793,7 @@ async function handleRequest(request, event) {
         } else if (login_database == 'mongodb') {
           // to be implemented later
         } else { // local database
-          for (i = 0; i < authConfig.users_list.length; i++) {
+          for (let i = 0; i < authConfig.users_list.length; i++) {
             if (authConfig.users_list[i].username == username) {
               user_found = true;
               console.log("User Found");
@@ -862,7 +863,7 @@ async function handleRequest(request, event) {
       } else if (login_database == 'mongodb') {
         // to be implemented later
       } else { // local database
-        for (i = 0; i < authConfig.users_list.length; i++) {
+        for (let i = 0; i < authConfig.users_list.length; i++) {
           if (authConfig.users_list[i].username == username && authConfig.users_list[i].password == password) {
             var user_found = true;
             break;
@@ -1063,7 +1064,7 @@ async function handleRequest(request, event) {
         } else if (login_database == 'mongodb') {
           // to be implemented later
         } else { // local database
-          for (i = 0; i < authConfig.users_list.length; i++) {
+          for (let i = 0; i < authConfig.users_list.length; i++) {
             if (authConfig.users_list[i].username == username) {
               var user_found = true;
               break;
@@ -1294,7 +1295,7 @@ async function handleRequest(request, event) {
     console.log(file);
     const range = request.headers.get('Range');
     const inline = 'true' === url.searchParams.get('inline');
-    if (gd.root.protect_file_link && enable_login) return login();
+    if (gd.root.protect_file_link && authConfig.enable_login) return login();
     return download(file.id, range, inline);
 
   }
@@ -1412,7 +1413,7 @@ async function apiRequest(request, gd, user_ip) {
     if (authConfig['enable_password_file_verify']) {
       const password = await gd.password(path);
       // console.log("dir password", password);
-      if (password && password.replace("\n", "") !== form.get('password')) {
+      if (password && password.replace("\n", "") !== requestData.password) {
         const html = `Y29kZWlzcHJvdGVjdGVk=0Xfi4icvJnclBCZy92dzNXYwJCI6ISZnF2czVWbiwSMwQDI6ISZk92YisHI6IicvJnclJyeYmFzZTY0aXNleGNsdWRlZA==`;
         return new Response(html, option);
       }
