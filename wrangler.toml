@@ -2,63 +2,34 @@ name = "google-drive-index"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
-# KV Namespace for user sessions (optional)
+# ============================================================================
+# REQUIRED: KV Namespace for sessions/cache
+# Run: wrangler kv:namespace create "ENV"
+# Run: wrangler kv:namespace create "ENV" --preview
+# ============================================================================
 [[kv_namespaces]]
 binding = "ENV"
 id = "YOUR_KV_NAMESPACE_ID"
 preview_id = "YOUR_PREVIEW_KV_NAMESPACE_ID"
 
-# D1 Database (optional - for database-backed config)
-# Uncomment to use D1:
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "google-drive-index-db"
-# database_id = "YOUR_D1_DATABASE_ID"
-
-# HyperDrive (optional - for external database)
-# Uncomment to use HyperDrive:
-# [[hyperdrive]]
-# binding = "HYPERDRIVE"
-# id = "YOUR_HYPERDRIVE_ID"
+# ============================================================================
+# REQUIRED: D1 Database for all configuration storage
+# Run: wrangler d1 create google-drive-index-db
+# ============================================================================
+[[d1_databases]]
+binding = "DB"
+database_name = "google-drive-index-db"
+database_id = "YOUR_D1_DATABASE_ID"
 
 [build]
-command = "npm install && npx wrangler deploy"
+command = "npm install"
 
 # ============================================================================
-# ALL CONFIGURATION AS PLAIN TEXT (visible in Cloudflare dashboard)
+# SETUP PASSWORD (required for first-time setup)
+# Change this before deploying!
 # ============================================================================
 [vars]
-ENVIRONMENT = "production"
-
-# Google OAuth2 Credentials (Option 1: User Account)
-CLIENT_ID = ""
-CLIENT_SECRET = ""
-REFRESH_TOKEN = ""
-
-# Service Account (Option 2: paste JSON as single line, or leave empty)
-# Get from Google Cloud Console > IAM > Service Accounts > Keys > Create Key (JSON)
-SERVICE_ACCOUNT_JSON = ""
-
-# Site Settings
-SITE_NAME = "Google Drive Index"
-DOWNLOAD_MODE = "path"
-FILES_LIST_PAGE_SIZE = "100"
-SEARCH_PAGE_SIZE = "100"
-
-# Login System
-ENABLE_LOGIN = "false"
-ENABLE_SIGNUP = "false"
-REDIRECT_DOMAIN = ""
-GOOGLE_CLIENT_ID_FOR_LOGIN = ""
-GOOGLE_CLIENT_SECRET_FOR_LOGIN = ""
-
-# Blocking (comma-separated)
-BLOCKED_REGIONS = ""
-BLOCKED_ASN = ""
-
-# Cryptographic Keys
-CRYPTO_BASE_KEY = ""
-HMAC_BASE_KEY = ""
+SETUP_PASSWORD = "changeme123"
 
 [env.production]
 name = "google-drive-index"

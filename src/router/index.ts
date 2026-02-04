@@ -3,33 +3,86 @@
  * @version 3.0.0
  */
 
-import { config, applyEnvConfig } from '../config';
+import { config } from '../config';
 import { initDrives, getDrive, getAllDrives, GoogleDrive } from '../services/drive';
 import { validateSession, handleLogin, handleSignup, handleLogout, requiresAuth } from '../services/auth';
 import { encryptString, decryptString, generateDownloadLink, verifyDownloadLink } from '../utils/crypto';
 import { jsonResponse, htmlResponse, redirectResponse } from '../utils/helpers';
 import { getMainHTML, getHomepageHTML, getLoginHTML, getErrorHTML, getBlockedHTML } from '../templates';
 import { handleAdminRequest } from '../admin';
-import { handleSetup } from '../setup';
-import { getConfigManager } from '../database';
-import type { Env, DriveFile, ListRequestBody, SearchRequestBody, ConfigBackend } from '../types';
+import { handleSetup, isSetupRequired } from '../setup';
+import type { Env, DriveFile, ListRequestBody, SearchRequestBody } from '../types';
+
+/**
+ * Load configuration from D1 database into runtime config
+ */
+async function loadConfigFromD1(env: Env): Promise<void> {
+  try {
+    // Load all config values
+    const configs = await env.DB.prepare('SELECT key, value FROM config').all<{ key: string; value: string }>();
+    
+    for (const row of configs.results || []) {
+      const { key, value } = row;
+      
+      switch (key) {
+        case 'auth.client_id': config.auth.client_id = value; break;
+        case 'auth.client_secret': config.auth.client_secret = value; break;
+        case 'auth.refresh_token': config.auth.refresh_token = value; break;
+        case 'site.name': config.auth.siteName = value; break;
+        case 'site.download_mode': config.download_mode = value as 'path' | 'id'; break;
+        case 'auth.enable_login': config.auth.enable_login = value === 'true'; break;
+        case 'auth.enable_signup': config.auth.enable_signup = value === 'true'; break;
+        case 'auth.redirect_domain': config.auth.redirect_domain = value; break;
+        case 'security.blocked_regions': 
+          config.blocked_region = value ? value.split(',').map(s => s.trim().toUpperCase()) : [];
+          break;
+        case 'security.blocked_asn':
+          config.blocked_asn = value ? value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n)) : [];
+          break;
+        case 'security.crypto_key': (config as any).crypto_base_key = value; break;
+        case 'security.hmac_key': (config as any).hmac_base_key = value; break;
+      }
+    }
+
+    // Load drives
+    const drives = await env.DB.prepare(
+      'SELECT drive_id, name, protect_file_link FROM drives WHERE enabled = 1 ORDER BY order_index'
+    ).all<{ drive_id: string; name: string; protect_file_link: number }>();
+    
+    if (drives.results && drives.results.length > 0) {
+      config.auth.roots = drives.results.map(d => ({
+        id: d.drive_id,
+        name: d.name,
+        protect_file_link: d.protect_file_link === 1
+      }));
+    }
+
+    // Load service accounts
+    const serviceAccounts = await env.DB.prepare(
+      'SELECT json_data FROM service_accounts WHERE enabled = 1'
+    ).all<{ json_data: string }>();
+    
+    if (serviceAccounts.results && serviceAccounts.results.length > 0) {
+      config.serviceaccounts = serviceAccounts.results.map(sa => JSON.parse(sa.json_data));
+      config.auth.service_account = true;
+      config.auth.service_account_json = config.serviceaccounts[0];
+    }
+  } catch (error) {
+    console.error('Error loading config from D1:', error);
+  }
+}
 
 /**
  * Main request handler
  */
-export async function handleRequest(request: Request, env?: Env): Promise<Response> {
+export async function handleRequest(request: Request, env: Env): Promise<Response> {
   try {
-    // Apply environment variables to config
-    applyEnvConfig(env);
-
     const url = new URL(request.url);
     const path = url.pathname;
     const userIp = request.headers.get('CF-Connecting-IP') || '';
 
-    // Check if setup is required
-    const backend = (config as any).configBackend || 'static';
-    const configManager = getConfigManager(backend as ConfigBackend, env);
-    const setupRequired = await configManager.isSetupRequired();
+    // Check if setup is required (config not in D1 yet)
+    const setupRequired = await isSetupRequired(env);
     
     if (setupRequired && !path.startsWith('/setup')) {
       return redirectResponse('/setup');
@@ -37,8 +90,11 @@ export async function handleRequest(request: Request, env?: Env): Promise<Respon
 
     // Setup wizard
     if (path.startsWith('/setup')) {
-      return handleSetup(request, env!);
+      return handleSetup(request, env);
     }
+
+    // Load config from D1 and apply to runtime config
+    await loadConfigFromD1(env);
 
     // Check blocked regions/ASNs
     const cf = (request as any).cf;
