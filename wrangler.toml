@@ -9,8 +9,8 @@ compatibility_date = "2026-01-20"
 # ============================================================================
 [[kv_namespaces]]
 binding = "ENV"
-id = "YOUR_KV_NAMESPACE_ID"
-preview_id = "YOUR_PREVIEW_KV_NAMESPACE_ID"
+id = "c7e4334ce8324d259f097a8228470886"
+preview_id = "c7e4334ce8324d259f097a8228470886"
 
 # ============================================================================
 # REQUIRED: D1 Database for all configuration storage
@@ -19,7 +19,7 @@ preview_id = "YOUR_PREVIEW_KV_NAMESPACE_ID"
 [[d1_databases]]
 binding = "DB"
 database_name = "google-drive-index-db"
-database_id = "YOUR_D1_DATABASE_ID"
+database_id = "bb2adc93-f51b-4aed-8844-cd7dadf1c601"
 
 [build]
 command = "npm install"
@@ -29,7 +29,7 @@ command = "npm install"
 # Change this before deploying!
 # ============================================================================
 [vars]
-SETUP_PASSWORD = "changeme123"
+SETUP_PASSWORD = "bhadoo"
 
 [env.production]
 name = "google-drive-index"
