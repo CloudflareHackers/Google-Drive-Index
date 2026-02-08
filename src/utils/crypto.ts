@@ -11,18 +11,28 @@ import { config } from '../config';
 // ============================================================================
 
 /**
+ * Derive a proper 256-bit AES key from an arbitrary-length string
+ * Uses SHA-256 to always produce exactly 32 bytes (256 bits)
+ */
+async function deriveAESKey(keyString: string, usage: KeyUsage[]): Promise<CryptoKey> {
+  const keyData = new TextEncoder().encode(keyString);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', keyData);
+  return crypto.subtle.importKey(
+    'raw',
+    hashBuffer,
+    'AES-CBC',
+    false,
+    usage
+  );
+}
+
+/**
  * Encrypt a string using AES-CBC
  * @param plaintext - The string to encrypt
  * @returns Base64 encoded encrypted string
  */
 export async function encryptString(plaintext: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(config.crypto_base_key),
-    'AES-CBC',
-    false,
-    ['encrypt']
-  );
+  const key = await deriveAESKey(config.crypto_base_key, ['encrypt']);
 
   const encodedData = new TextEncoder().encode(plaintext);
   const encryptedData = await crypto.subtle.encrypt(
@@ -49,13 +59,7 @@ export async function encryptString(plaintext: string): Promise<string> {
  * @returns Decrypted plaintext string
  */
 export async function decryptString(encryptedString: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(config.crypto_base_key),
-    'AES-CBC',
-    false,
-    ['decrypt']
-  );
+  const key = await deriveAESKey(config.crypto_base_key, ['decrypt']);
 
   const encryptedBytes = Uint8Array.from(
     atob(encryptedString),
