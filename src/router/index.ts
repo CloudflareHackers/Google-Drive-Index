@@ -13,64 +13,72 @@ import { handleAdminRequest } from '../admin';
 import { handleSetup, isSetupRequired } from '../setup';
 import type { Env, DriveFile, ListRequestBody, SearchRequestBody } from '../types';
 
-// CDN URLs for static assets
-const APP_JS_URL = 'https://cdn.jsdelivr.net/npm/@googledrive/index@2.2.3/src/app.js';
-const FAVICON_URL = 'https://cdn.jsdelivr.net/npm/@googledrive/index@2.2.3/images/favicon.ico';
-const LOGO_URL = 'https://cdn.jsdelivr.net/npm/@googledrive/index@2.2.3/images/logo.svg';
+// Import static assets directly - served from worker bundle (no CDN)
+import APP_JS_CONTENT from '../app.txt';
+import FAVICON_DATA from '../../images/favicon.ico';
+import LOGO_SVG from '../../images/logo.svg';
+import POSTER_DATA from '../../images/poster.jpg';
+import MUSIC_DATA from '../../images/music.jpg';
 
 /**
- * Serve app.js from CDN
+ * Serve app.js from bundled content
  */
-async function serveAppJs(): Promise<Response> {
-  try {
-    const response = await fetch(APP_JS_URL);
-    const js = await response.text();
-    return new Response(js, {
-      headers: {
-        'Content-Type': 'application/javascript; charset=utf-8',
-        'Cache-Control': 'public, max-age=86400',
-        'Access-Control-Allow-Origin': '*'
-      }
-    });
-  } catch {
-    return new Response('// Error loading app.js', { status: 500 });
-  }
+function serveAppJs(): Response {
+  return new Response(APP_JS_CONTENT, {
+    headers: {
+      'Content-Type': 'application/javascript; charset=utf-8',
+      'Cache-Control': 'public, max-age=86400',
+      'Access-Control-Allow-Origin': '*'
+    }
+  });
 }
 
 /**
- * Serve favicon from CDN
+ * Serve favicon from bundled content
  */
-async function serveFavicon(): Promise<Response> {
-  try {
-    const response = await fetch(FAVICON_URL);
-    const data = await response.arrayBuffer();
-    return new Response(data, {
-      headers: {
-        'Content-Type': 'image/x-icon',
-        'Cache-Control': 'public, max-age=604800'
-      }
-    });
-  } catch {
-    return new Response('', { status: 404 });
-  }
+function serveFavicon(): Response {
+  return new Response(FAVICON_DATA, {
+    headers: {
+      'Content-Type': 'image/x-icon',
+      'Cache-Control': 'public, max-age=604800'
+    }
+  });
 }
 
 /**
- * Serve logo from CDN
+ * Serve logo from bundled content
  */
-async function serveLogo(): Promise<Response> {
-  try {
-    const response = await fetch(LOGO_URL);
-    const svg = await response.text();
-    return new Response(svg, {
-      headers: {
-        'Content-Type': 'image/svg+xml',
-        'Cache-Control': 'public, max-age=604800'
-      }
-    });
-  } catch {
-    return new Response('', { status: 404 });
-  }
+function serveLogo(): Response {
+  return new Response(LOGO_SVG, {
+    headers: {
+      'Content-Type': 'image/svg+xml',
+      'Cache-Control': 'public, max-age=604800'
+    }
+  });
+}
+
+/**
+ * Serve poster image from bundled content
+ */
+function servePoster(): Response {
+  return new Response(POSTER_DATA, {
+    headers: {
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': 'public, max-age=604800'
+    }
+  });
+}
+
+/**
+ * Serve music poster image from bundled content
+ */
+function serveMusic(): Response {
+  return new Response(MUSIC_DATA, {
+    headers: {
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': 'public, max-age=604800'
+    }
+  });
 }
 
 /**
@@ -151,6 +159,23 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     // Setup wizard
     if (path.startsWith('/setup')) {
       return handleSetup(request, env);
+    }
+
+    // Serve static assets directly from worker bundle (no config needed)
+    if (path === '/app.js') {
+      return serveAppJs();
+    }
+    if (path === '/favicon.ico') {
+      return serveFavicon();
+    }
+    if (path === '/logo.svg') {
+      return serveLogo();
+    }
+    if (path === '/poster.jpg') {
+      return servePoster();
+    }
+    if (path === '/music.jpg') {
+      return serveMusic();
     }
 
     // Load config from D1 and apply to runtime config
@@ -269,17 +294,6 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 
       // ID-based: redirect to view
       return htmlResponse(getMainHTML(drive.order, { is_search_page: false, root_type: drive.root_type }));
-    }
-
-    // Serve static assets
-    if (path === '/app.js') {
-      return serveAppJs();
-    }
-    if (path === '/favicon.ico') {
-      return serveFavicon();
-    }
-    if (path === '/logo.svg') {
-      return serveLogo();
     }
 
     // Default: redirect to first drive

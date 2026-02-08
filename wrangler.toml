@@ -21,6 +21,15 @@ binding = "DB"
 database_name = "google-drive-index-db"
 database_id = "bb2adc93-f51b-4aed-8844-cd7dadf1c601"
 
+# Static asset import rules - serve files directly from worker
+[[rules]]
+type = "Text"
+globs = ["**/*.txt", "**/*.svg"]
+
+[[rules]]
+type = "Data"
+globs = ["**/*.ico", "**/*.jpg", "**/*.png"]
+
 [build]
 command = "npm install"
 
