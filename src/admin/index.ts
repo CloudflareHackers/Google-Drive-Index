@@ -7,7 +7,7 @@
 import { config, adminConfig } from '../config';
 import { encryptString, decryptString, generateIntegrity, verifyIntegrity } from '../utils/crypto';
 import { parseCookies, buildCookie, jsonResponse, htmlResponse } from '../utils/helpers';
-import { getAdminLoginHTML, getAdminDashboardHTML } from './dashboard.html';
+import { getAdminLoginHTML, getAdminDashboardHTML } from './dashboard-html';
 import { getGoogleLoginScript, getSecurityScript } from './dashboard-scripts';
 import type { Env } from '../types';
 
