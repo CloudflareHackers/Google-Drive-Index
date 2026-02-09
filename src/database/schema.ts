@@ -1,7 +1,63 @@
 /**
- * Database Schema SQL
- * @version 3.0.0
+ * Database Schema SQL & Type Definitions
+ * @version 3.1.0
  */
+
+// ============================================================================
+// TypeScript Interfaces
+// ============================================================================
+
+export interface DriveConfig {
+  id: string;
+  name: string;
+  drive_type: 'personal' | 'shared' | 'sub-folder';
+  drive_id: string;
+  credential_id?: string;
+  client_id: string;
+  client_secret: string;
+  refresh_token: string;
+  auth_type: 'refresh_token' | 'service_account';
+  service_account?: string;
+  root_folder_id?: string;
+  order: number;
+  password?: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GlobalCredential {
+  id: string;
+  name: string;
+  client_id: string;
+  client_secret: string;
+  refresh_token: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SiteConfig {
+  site_name: string;
+  site_description: string;
+  theme: string;
+  custom_css: string;
+  custom_js: string;
+  allow_signup: boolean;
+  require_auth: boolean;
+  files_per_page: number;
+  enable_search: boolean;
+  enable_readme: boolean;
+  enable_thumbnails: boolean;
+  download_method: 'file' | 'path';
+  admin_password_hash: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// D1 Schema SQL
+// ============================================================================
 
 export const D1_SCHEMA = `
 -- Configuration table

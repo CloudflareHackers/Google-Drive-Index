@@ -23,7 +23,7 @@ export default {
 // Legacy addEventListener support
 addEventListener('fetch', (event: FetchEvent) => {
   event.respondWith(
-    handleRequest(event.request).catch(
+    handleRequest(event.request, {} as any).catch(
       err => new Response(`Error: ${err.stack}`, { status: 500 })
     )
   );
