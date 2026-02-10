@@ -290,18 +290,29 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
         return handleListRequest(body, drive, drivePath, userIp);
       }
 
-      // GET with ?a=view or trailing slash = render page
+      // GET with ?a=view = render view page
       const action = url.searchParams.get('a');
-      if (drivePath.endsWith('/') || action) {
+      const isDownload = url.searchParams.get('download') === 'true';
+      
+      if (drivePath.endsWith('/')) {
         return htmlResponse(getMainHTML(drive.order, { is_search_page: false, root_type: drive.root_type }));
       }
 
-      // Direct file access (path-based download)
+      // ?download=true on a path = path-based download (works in both modes)
+      if (isDownload) {
+        return handlePathDownload(request, drive, drivePath);
+      }
+
+      // ?a=view = render the view page
+      if (action) {
+        return htmlResponse(getMainHTML(drive.order, { is_search_page: false, root_type: drive.root_type }));
+      }
+
+      // No query params on a file path = direct download in path mode, view in id mode
       if (config.download_mode === 'path') {
         return handlePathDownload(request, drive, drivePath);
       }
 
-      // ID-based: redirect to view
       return htmlResponse(getMainHTML(drive.order, { is_search_page: false, root_type: drive.root_type }));
     }
 
@@ -389,9 +400,12 @@ async function handleFileInfoRequest(drive: GoogleDrive, drivePath: string, user
 
   const encryptedId = await encryptString(file.id);
   const encryptedDriveId = file.driveId ? await encryptString(file.driveId) : '';
-  const link = file.mimeType !== 'application/vnd.google-apps.folder'
-    ? await generateDownloadLink(file.id, userIp)
-    : undefined;
+  let link: string | undefined;
+  if (file.mimeType !== 'application/vnd.google-apps.folder') {
+    link = config.download_mode === 'path'
+      ? `/${drive.order}:${drivePath}?download=true`
+      : await generateDownloadLink(file.id, userIp);
+  }
 
   return jsonResponse({
     ...file,
@@ -401,16 +415,25 @@ async function handleFileInfoRequest(drive: GoogleDrive, drivePath: string, user
   });
 }
 
+function generatePathLink(path: string, fileName: string, driveOrder: number): string {
+  const encodedName = encodeURIComponent(fileName).replace(/%2F/g, '/');
+  return `/${driveOrder}:${path}${encodedName}?download=true`;
+}
+
 async function handleListRequest(body: ListRequestBody, drive: GoogleDrive, path: string, userIp: string): Promise<Response> {
   const result = await drive.listFiles(path, body.page_token || undefined, body.page_index || 0);
+  const usePathLinks = config.download_mode === 'path';
 
   // Encrypt file IDs and generate download links
   const encryptedFiles = await Promise.all(result.data.files.map(async (file) => {
     const encryptedId = await encryptString(file.id);
     const encryptedDriveId = file.driveId ? await encryptString(file.driveId) : '';
-    const link = file.mimeType !== 'application/vnd.google-apps.folder' 
-      ? await generateDownloadLink(file.id, userIp) 
-      : undefined;
+    let link: string | undefined;
+    if (file.mimeType !== 'application/vnd.google-apps.folder') {
+      link = usePathLinks 
+        ? generatePathLink(path, file.name, drive.order)
+        : await generateDownloadLink(file.id, userIp);
+    }
 
     return { ...file, id: encryptedId, driveId: encryptedDriveId, link };
   }));
