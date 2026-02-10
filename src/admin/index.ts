@@ -305,38 +305,64 @@ async function apiRegenerateKey(body: any, env: Env): Promise<Response> {
 // Fetch Root ID API
 // ============================================================================
 
+async function getOAuthToken(credentialId: number | null, env: Env): Promise<{access_token: string} | {error: string}> {
+  let clientId: string | undefined, clientSecret: string | undefined, refreshToken: string | undefined;
+  if (credentialId) {
+    const cred = await env.DB.prepare('SELECT client_id, client_secret, refresh_token FROM oauth_credentials WHERE id=?')
+      .bind(credentialId).first<{client_id:string;client_secret:string;refresh_token:string}>();
+    if (cred) { clientId = cred.client_id; clientSecret = cred.client_secret; refreshToken = cred.refresh_token; }
+  }
+  if (!clientId) {
+    clientId = (await env.DB.prepare("SELECT value FROM config WHERE key='auth.client_id'").first<{value:string}>())?.value;
+    clientSecret = (await env.DB.prepare("SELECT value FROM config WHERE key='auth.client_secret'").first<{value:string}>())?.value;
+    refreshToken = (await env.DB.prepare("SELECT value FROM config WHERE key='auth.refresh_token'").first<{value:string}>())?.value;
+  }
+  if (!clientId || !clientSecret || !refreshToken) return { error: 'No OAuth credentials. Select a credential first.' };
+  const tokenRes = await fetch('https://www.googleapis.com/oauth2/v4/token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&refresh_token=${encodeURIComponent(refreshToken)}&grant_type=refresh_token`
+  });
+  const tokenData = await tokenRes.json() as any;
+  if (!tokenData.access_token) return { error: 'Failed to get access token. Check credentials.' };
+  return { access_token: tokenData.access_token };
+}
+
+async function apiListSharedDrives(body: any, env: Env): Promise<Response> {
+  try {
+    if (!body.credential_id) return jsonResponse({ error: 'Please select a credential first' }, 400);
+    const token = await getOAuthToken(body.credential_id, env);
+    if ('error' in token) return jsonResponse({ error: token.error }, 400);
+    const res = await fetch('https://www.googleapis.com/drive/v3/drives?pageSize=100&fields=drives(id,name)', {
+      headers: { Authorization: `Bearer ${token.access_token}` }
+    });
+    const data = await res.json() as any;
+    if (data.error) return jsonResponse({ error: data.error.message || 'API error' }, 400);
+    // Also get the user's root drive
+    const rootRes = await fetch('https://www.googleapis.com/drive/v3/files/root?fields=id,name', {
+      headers: { Authorization: `Bearer ${token.access_token}` }
+    });
+    const rootData = await rootRes.json() as any;
+    const drives = [{ id: rootData.id, name: rootData.name || 'My Drive', type: 'personal' }];
+    if (data.drives) {
+      for (const d of data.drives) { drives.push({ id: d.id, name: d.name, type: 'shared' }); }
+    }
+    return jsonResponse({ drives });
+  } catch (e) { return jsonResponse({ error: (e as Error).message }, 500); }
+}
+
 async function apiFetchRootId(body: any, env: Env): Promise<Response> {
   try {
-    // Get credentials - either from a specific credential_id or from config
-    let clientId: string | undefined, clientSecret: string | undefined, refreshToken: string | undefined;
-    
-    if (body.credential_id) {
-      const cred = await env.DB.prepare('SELECT client_id, client_secret, refresh_token FROM oauth_credentials WHERE id=?')
-        .bind(body.credential_id).first<{client_id:string;client_secret:string;refresh_token:string}>();
-      if (cred) { clientId = cred.client_id; clientSecret = cred.client_secret; refreshToken = cred.refresh_token; }
-    }
-    
-    if (!clientId) {
-      clientId = (await env.DB.prepare("SELECT value FROM config WHERE key='auth.client_id'").first<{value:string}>())?.value;
-      clientSecret = (await env.DB.prepare("SELECT value FROM config WHERE key='auth.client_secret'").first<{value:string}>())?.value;
-      refreshToken = (await env.DB.prepare("SELECT value FROM config WHERE key='auth.refresh_token'").first<{value:string}>())?.value;
-    }
-    
-    if (!clientId || !clientSecret || !refreshToken) return jsonResponse({ error: 'No OAuth credentials available' }, 400);
-    const tokenRes = await fetch('https://www.googleapis.com/oauth2/v4/token', {
-      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&refresh_token=${encodeURIComponent(refreshToken)}&grant_type=refresh_token`
-    });
-    const tokenData = await tokenRes.json() as any;
-    if (!tokenData.access_token) return jsonResponse({ error: 'Failed to get access token' }, 500);
+    if (!body.credential_id) return jsonResponse({ error: 'Please select a credential first' }, 400);
+    const token = await getOAuthToken(body.credential_id, env);
+    if ('error' in token) return jsonResponse({ error: token.error }, 400);
     const driveId = body.drive_id;
     if (!driveId) return jsonResponse({ error: 'drive_id required' }, 400);
     if (driveId === 'root') {
-      const res = await fetch('https://www.googleapis.com/drive/v3/files/root?fields=id,name', { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
+      const res = await fetch('https://www.googleapis.com/drive/v3/files/root?fields=id,name', { headers: { Authorization: `Bearer ${token.access_token}` } });
       const data = await res.json() as any;
       return jsonResponse({ root_id: data.id, name: data.name || 'My Drive' });
     }
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${driveId}?fields=id,name,mimeType&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${driveId}?fields=id,name,mimeType&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token.access_token}` } });
     const data = await res.json() as any;
     if (data.error) return jsonResponse({ error: data.error.message || 'Drive API error' }, 400);
     return jsonResponse({ root_id: data.id, name: data.name, mimeType: data.mimeType });
@@ -413,6 +439,7 @@ export async function handleAdminRequest(request: Request, env?: Env): Promise<R
       case '/admin/api/drives/update': return apiUpdateDrive(body, env);
       case '/admin/api/drives/delete': return apiDeleteDrive(body, env);
       case '/admin/api/drives/fetch-root': return apiFetchRootId(body, env);
+      case '/admin/api/drives/list-shared': return apiListSharedDrives(body, env);
       case '/admin/api/config/set': return apiSetConfig(body, env);
       case '/admin/api/config/delete': return apiDeleteConfig(body, env);
       case '/admin/api/config/bulk': return apiBulkSetConfig(body, env);
