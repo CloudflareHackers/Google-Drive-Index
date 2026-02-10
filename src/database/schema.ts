@@ -73,28 +73,13 @@ CREATE TABLE IF NOT EXISTS config (
 CREATE INDEX IF NOT EXISTS idx_config_key ON config(key);
 CREATE INDEX IF NOT EXISTS idx_config_category ON config(category);
 
--- OAuth Credentials table (multiple credential sets)
-CREATE TABLE IF NOT EXISTS oauth_credentials (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  client_id TEXT NOT NULL,
-  client_secret TEXT NOT NULL,
-  refresh_token TEXT NOT NULL,
-  is_default INTEGER NOT NULL DEFAULT 0,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Drives table
 CREATE TABLE IF NOT EXISTS drives (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  drive_id TEXT NOT NULL,
+  drive_id TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   order_index INTEGER NOT NULL DEFAULT 0,
   protect_file_link INTEGER NOT NULL DEFAULT 0,
-  auth_type TEXT NOT NULL DEFAULT 'credential' CHECK(auth_type IN ('credential', 'service_account')),
-  credential_id INTEGER DEFAULT NULL REFERENCES oauth_credentials(id) ON DELETE SET NULL,
-  sa_id INTEGER DEFAULT NULL REFERENCES service_accounts(id) ON DELETE SET NULL,
   enabled INTEGER NOT NULL DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -121,7 +106,8 @@ CREATE INDEX IF NOT EXISTS idx_users_enabled ON users(enabled);
 CREATE TABLE IF NOT EXISTS service_accounts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  json_data TEXT NOT NULL,
+  client_email TEXT NOT NULL UNIQUE,
+  private_key TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -170,28 +156,13 @@ CREATE TABLE IF NOT EXISTS config (
 CREATE INDEX IF NOT EXISTS idx_config_key ON config(key);
 CREATE INDEX IF NOT EXISTS idx_config_category ON config(category);
 
--- OAuth Credentials table (multiple credential sets)
-CREATE TABLE IF NOT EXISTS oauth_credentials (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
-  client_id TEXT NOT NULL,
-  client_secret TEXT NOT NULL,
-  refresh_token TEXT NOT NULL,
-  is_default BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Drives table
 CREATE TABLE IF NOT EXISTS drives (
   id SERIAL PRIMARY KEY,
-  drive_id VARCHAR(255) NOT NULL,
+  drive_id VARCHAR(255) NOT NULL UNIQUE,
   name VARCHAR(255) NOT NULL,
   order_index INTEGER NOT NULL DEFAULT 0,
   protect_file_link BOOLEAN NOT NULL DEFAULT FALSE,
-  auth_type VARCHAR(20) NOT NULL DEFAULT 'credential' CHECK(auth_type IN ('credential', 'service_account')),
-  credential_id INTEGER DEFAULT NULL REFERENCES oauth_credentials(id) ON DELETE SET NULL,
-  sa_id INTEGER DEFAULT NULL REFERENCES service_accounts(id) ON DELETE SET NULL,
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -218,7 +189,8 @@ CREATE INDEX IF NOT EXISTS idx_users_enabled ON users(enabled);
 CREATE TABLE IF NOT EXISTS service_accounts (
   id SERIAL PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
-  json_data TEXT NOT NULL,
+  client_email VARCHAR(255) NOT NULL UNIQUE,
+  private_key TEXT NOT NULL,
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
