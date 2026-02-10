@@ -375,6 +375,9 @@ async function apiFetchRootId(body: any, env: Env): Promise<Response> {
     const driveId = body.drive_id;
     if (!driveId) return jsonResponse({ error: 'drive_id required' }, 400);
     if (driveId === 'root') {
+      if (body.auth_type === 'service_account') {
+        return jsonResponse({ error: 'Service accounts do not have a personal root drive. Use Browse Drives to select a shared drive instead.' }, 400);
+      }
       const res = await fetch('https://www.googleapis.com/drive/v3/files/root?fields=id,name', { headers: { Authorization: `Bearer ${token.access_token}` } });
       const data = await res.json() as any;
       return jsonResponse({ root_id: data.id, name: data.name || 'My Drive' });
