@@ -114,38 +114,39 @@ async function loadConfigFromD1(env: Env): Promise<void> {
       }
     }
 
-    // Load drives with their credentials
-    const drives = await env.DB.prepare(
-      'SELECT drive_id, name, protect_file_link, auth_type, credential_id FROM drives WHERE enabled = 1 ORDER BY order_index'
-    ).all<{ drive_id: string; name: string; protect_file_link: number; auth_type: string; credential_id: number | null }>();
+    // Load drives with credentials via JOINs (single query, no N+1)
+    const drives = await env.DB.prepare(`
+      SELECT d.drive_id, d.name, d.protect_file_link, d.auth_type, d.credential_id,
+        oc.client_id AS oc_client_id, oc.client_secret AS oc_client_secret, oc.refresh_token AS oc_refresh_token,
+        sa.json_data AS sa_json_data
+      FROM drives d
+      LEFT JOIN oauth_credentials oc ON d.auth_type='oauth' AND d.credential_id=oc.id
+      LEFT JOIN service_accounts sa ON d.auth_type='service_account' AND d.credential_id=sa.id
+      WHERE d.enabled = 1
+      ORDER BY d.order_index
+    `).all<{
+      drive_id: string; name: string; protect_file_link: number;
+      auth_type: string; credential_id: number | null;
+      oc_client_id: string | null; oc_client_secret: string | null; oc_refresh_token: string | null;
+      sa_json_data: string | null;
+    }>();
     
     if (drives.results && drives.results.length > 0) {
-      const driveRoots = [];
-      for (const d of drives.results) {
+      config.auth.roots = drives.results.map(d => {
         const root: any = { id: d.drive_id, name: d.name, protect_file_link: d.protect_file_link === 1 };
-        // Load per-drive credentials
-        if (d.auth_type === 'service_account' && d.credential_id) {
+        if (d.auth_type === 'service_account' && d.sa_json_data) {
           try {
-            const sa = await env.DB.prepare('SELECT json_data FROM service_accounts WHERE id=?').bind(d.credential_id).first<{json_data:string}>();
-            if (sa?.json_data) {
-              root._auth_type = 'service_account';
-              root._sa_json = JSON.parse(sa.json_data);
-            }
+            root._auth_type = 'service_account';
+            root._sa_json = JSON.parse(d.sa_json_data);
           } catch {}
-        } else if (d.auth_type === 'oauth' && d.credential_id) {
-          try {
-            const cred = await env.DB.prepare('SELECT client_id, client_secret, refresh_token FROM oauth_credentials WHERE id=?').bind(d.credential_id).first<{client_id:string;client_secret:string;refresh_token:string}>();
-            if (cred) {
-              root._auth_type = 'oauth';
-              root._client_id = cred.client_id;
-              root._client_secret = cred.client_secret;
-              root._refresh_token = cred.refresh_token;
-            }
-          } catch {}
+        } else if (d.auth_type === 'oauth' && d.oc_client_id) {
+          root._auth_type = 'oauth';
+          root._client_id = d.oc_client_id;
+          root._client_secret = d.oc_client_secret;
+          root._refresh_token = d.oc_refresh_token;
         }
-        driveRoots.push(root);
-      }
-      config.auth.roots = driveRoots;
+        return root;
+      });
     }
 
     // Load service accounts
