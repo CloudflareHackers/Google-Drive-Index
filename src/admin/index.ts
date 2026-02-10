@@ -305,19 +305,33 @@ async function apiRegenerateKey(body: any, env: Env): Promise<Response> {
 // Fetch Root ID API
 // ============================================================================
 
-async function getOAuthToken(credentialId: number | null, env: Env): Promise<{access_token: string} | {error: string}> {
+async function getAccessTokenForAdmin(credentialId: number | null, authType: string | undefined, env: Env): Promise<{access_token: string} | {error: string}> {
+  // Service Account auth - use JWT
+  if (authType === 'service_account' && credentialId) {
+    try {
+      const sa = await env.DB.prepare('SELECT json_data FROM service_accounts WHERE id=?').bind(credentialId).first<{json_data:string}>();
+      if (!sa?.json_data) return { error: 'Service account not found' };
+      const saJson = JSON.parse(sa.json_data);
+      const { generateGCPToken } = await import('../utils/crypto');
+      const jwt = await generateGCPToken(saJson);
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`
+      });
+      const tokenData = await tokenRes.json() as any;
+      if (!tokenData.access_token) return { error: 'Service account auth failed. Check the JSON key.' };
+      return { access_token: tokenData.access_token };
+    } catch (e) { return { error: 'SA error: ' + (e as Error).message }; }
+  }
+
+  // OAuth credential auth
   let clientId: string | undefined, clientSecret: string | undefined, refreshToken: string | undefined;
   if (credentialId) {
     const cred = await env.DB.prepare('SELECT client_id, client_secret, refresh_token FROM oauth_credentials WHERE id=?')
       .bind(credentialId).first<{client_id:string;client_secret:string;refresh_token:string}>();
     if (cred) { clientId = cred.client_id; clientSecret = cred.client_secret; refreshToken = cred.refresh_token; }
   }
-  if (!clientId) {
-    clientId = (await env.DB.prepare("SELECT value FROM config WHERE key='auth.client_id'").first<{value:string}>())?.value;
-    clientSecret = (await env.DB.prepare("SELECT value FROM config WHERE key='auth.client_secret'").first<{value:string}>())?.value;
-    refreshToken = (await env.DB.prepare("SELECT value FROM config WHERE key='auth.refresh_token'").first<{value:string}>())?.value;
-  }
-  if (!clientId || !clientSecret || !refreshToken) return { error: 'No OAuth credentials. Select a credential first.' };
+  if (!clientId || !clientSecret || !refreshToken) return { error: 'No credentials found. Select a credential first.' };
   const tokenRes = await fetch('https://www.googleapis.com/oauth2/v4/token', {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: `client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&refresh_token=${encodeURIComponent(refreshToken)}&grant_type=refresh_token`
@@ -330,7 +344,7 @@ async function getOAuthToken(credentialId: number | null, env: Env): Promise<{ac
 async function apiListSharedDrives(body: any, env: Env): Promise<Response> {
   try {
     if (!body.credential_id) return jsonResponse({ error: 'Please select a credential first' }, 400);
-    const token = await getOAuthToken(body.credential_id, env);
+    const token = await getAccessTokenForAdmin(body.credential_id, body.auth_type, env);
     if ('error' in token) return jsonResponse({ error: token.error }, 400);
     const res = await fetch('https://www.googleapis.com/drive/v3/drives?pageSize=100&fields=drives(id,name)', {
       headers: { Authorization: `Bearer ${token.access_token}` }
@@ -353,7 +367,7 @@ async function apiListSharedDrives(body: any, env: Env): Promise<Response> {
 async function apiFetchRootId(body: any, env: Env): Promise<Response> {
   try {
     if (!body.credential_id) return jsonResponse({ error: 'Please select a credential first' }, 400);
-    const token = await getOAuthToken(body.credential_id, env);
+    const token = await getAccessTokenForAdmin(body.credential_id, body.auth_type, env);
     if ('error' in token) return jsonResponse({ error: token.error }, 400);
     const driveId = body.drive_id;
     if (!driveId) return jsonResponse({ error: 'drive_id required' }, 400);
