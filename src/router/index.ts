@@ -299,7 +299,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       const command = driveMatch[2];
       const drive = getDrive(driveIndex);
       
-      if (!drive) return redirectResponse('/0:/');
+      if (!drive) return htmlResponse(getErrorHTML(404, 'Drive not found'), 404);
 
       switch (command) {
         case 'search':
@@ -320,7 +320,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       const drivePath = '/' + pathMatch[2];
       const drive = getDrive(driveIndex);
       
-      if (!drive) return redirectResponse('/0:/');
+      if (!drive) return htmlResponse(getErrorHTML(404, 'Drive not found'), 404);
 
       // POST = API request (listing or file info)
       if (request.method === 'POST') {
@@ -362,7 +362,10 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       return htmlResponse(getMainHTML(drive.order, { is_search_page: false, root_type: drive.root_type }));
     }
 
-    // Default: redirect to first drive
+    // Default: redirect to first drive or show error if no drives
+    if (config.auth.roots.length === 0) {
+      return htmlResponse(getErrorHTML(404, 'No drives configured. Please add drives in the admin panel.'), 404);
+    }
     return redirectResponse('/0:/');
   } catch (error) {
     console.error('Request error:', error);
