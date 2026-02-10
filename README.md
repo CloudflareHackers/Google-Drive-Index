@@ -423,6 +423,39 @@ npm run deploy
 
 ---
 
+## 🔗 API Integration
+
+### Open File/Folder by Google Drive ID
+
+Use the `/findpath` endpoint to open any file or folder by its Google Drive ID. This endpoint searches across ALL configured drives to find the file.
+
+```
+GET /findpath?id={GOOGLE_DRIVE_FILE_ID}&view=true
+```
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `id` | Yes | Google Drive file or folder ID |
+| `view` | No | Set to `true` to open in view/preview mode |
+
+**Example:**
+```
+https://google-drive-index.1337-files.workers.dev/findpath?id=1j51RKs0AZzft8WhBbQTAN_a3l74So4FJ&view=true
+```
+
+**How it works:**
+1. Tries each configured drive to resolve the file ID to a folder path
+2. If found → 302 redirect to `/{driveIndex}:/path/to/file?a=view`
+3. If not found in any drive → Falls back to ID-based access at `/fallback?id={encryptedId}`
+
+**Use cases:**
+- External apps linking to files by Google Drive ID
+- Telegram bots, web apps, or other services that know file IDs
+- Cross-drive file resolution (file in Drive 1 accessible via Drive 0's endpoint)
+
+---
+
 ## 🗺️ Roadmap
 
 - [ ] MongoDB support
