@@ -341,11 +341,22 @@ export class GoogleDrive {
   }
 }
 
-// Drive instances cache
-const driveInstances: GoogleDrive[] = [];
+// Drive instances cache - rebuilt when config.auth.roots changes
+let driveInstances: GoogleDrive[] = [];
+let lastRootsFingerprint = '';
 
 export async function initDrives(): Promise<GoogleDrive[]> {
-  if (driveInstances.length > 0) return driveInstances;
+  // Build a fingerprint from current roots to detect changes
+  const fingerprint = config.auth.roots.map(r => r.id).join(',');
+  
+  // Only rebuild if roots changed (drives added/deleted in admin)
+  if (driveInstances.length > 0 && fingerprint === lastRootsFingerprint) {
+    return driveInstances;
+  }
+
+  // Clear stale instances
+  driveInstances = [];
+  lastRootsFingerprint = fingerprint;
 
   try {
     for (let i = 0; i < config.auth.roots.length; i++) {

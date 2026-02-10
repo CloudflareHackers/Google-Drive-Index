@@ -131,7 +131,7 @@ async function loadConfigFromD1(env: Env): Promise<void> {
       sa_json_data: string | null;
     }>();
     
-    if (drives.results && drives.results.length > 0) {
+    if (drives.results) {
       config.auth.roots = drives.results.map(d => {
         const root: any = { id: d.drive_id, name: d.name, protect_file_link: d.protect_file_link === 1 };
         if (d.auth_type === 'service_account' && d.sa_json_data) {
