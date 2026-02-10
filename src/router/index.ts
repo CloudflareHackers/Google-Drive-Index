@@ -109,6 +109,7 @@ async function loadConfigFromD1(env: Env): Promise<void> {
           break;
         case 'security.crypto_key': (config as any).crypto_base_key = value; break;
         case 'security.hmac_key': (config as any).hmac_base_key = value; break;
+        case 'security.file_link_expiry': config.auth.file_link_expiry = parseInt(value) || 7; break;
       }
     }
 
