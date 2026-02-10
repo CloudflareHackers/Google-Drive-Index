@@ -113,17 +113,38 @@ async function loadConfigFromD1(env: Env): Promise<void> {
       }
     }
 
-    // Load drives
+    // Load drives with their credentials
     const drives = await env.DB.prepare(
-      'SELECT drive_id, name, protect_file_link FROM drives WHERE enabled = 1 ORDER BY order_index'
-    ).all<{ drive_id: string; name: string; protect_file_link: number }>();
+      'SELECT drive_id, name, protect_file_link, auth_type, credential_id FROM drives WHERE enabled = 1 ORDER BY order_index'
+    ).all<{ drive_id: string; name: string; protect_file_link: number; auth_type: string; credential_id: number | null }>();
     
     if (drives.results && drives.results.length > 0) {
-      config.auth.roots = drives.results.map(d => ({
-        id: d.drive_id,
-        name: d.name,
-        protect_file_link: d.protect_file_link === 1
-      }));
+      const driveRoots = [];
+      for (const d of drives.results) {
+        const root: any = { id: d.drive_id, name: d.name, protect_file_link: d.protect_file_link === 1 };
+        // Load per-drive credentials
+        if (d.auth_type === 'service_account' && d.credential_id) {
+          try {
+            const sa = await env.DB.prepare('SELECT json_data FROM service_accounts WHERE id=?').bind(d.credential_id).first<{json_data:string}>();
+            if (sa?.json_data) {
+              root._auth_type = 'service_account';
+              root._sa_json = JSON.parse(sa.json_data);
+            }
+          } catch {}
+        } else if (d.auth_type === 'oauth' && d.credential_id) {
+          try {
+            const cred = await env.DB.prepare('SELECT client_id, client_secret, refresh_token FROM oauth_credentials WHERE id=?').bind(d.credential_id).first<{client_id:string;client_secret:string;refresh_token:string}>();
+            if (cred) {
+              root._auth_type = 'oauth';
+              root._client_id = cred.client_id;
+              root._client_secret = cred.client_secret;
+              root._refresh_token = cred.refresh_token;
+            }
+          } catch {}
+        }
+        driveRoots.push(root);
+      }
+      config.auth.roots = driveRoots;
     }
 
     // Load service accounts

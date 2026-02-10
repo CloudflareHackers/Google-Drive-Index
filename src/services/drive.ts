@@ -9,61 +9,82 @@ import { buildQueryString, retry } from '../utils/helpers';
 import type { DriveFile, DriveListResponse, DriveSearchResult, DriveRootType } from '../types';
 import { DEFAULT_FILE_FIELDS, FOLDER_MIME_TYPE } from '../types';
 
-// Access token cache
-let accessToken: string | undefined;
-let tokenExpiry: number | undefined;
+// Per-drive token cache
+const tokenCache: Map<string, { token: string; expiry: number }> = new Map();
 
 /**
- * Get OAuth2 access token
+ * Get OAuth2 access token (global default)
  */
 export async function getAccessToken(): Promise<string> {
-  if (accessToken && tokenExpiry && tokenExpiry > Date.now()) {
-    return accessToken;
-  }
-
-  const tokenData = await fetchAccessToken();
-  if (tokenData.access_token) {
-    accessToken = tokenData.access_token;
-    tokenExpiry = Date.now() + 3500 * 1000;
-  }
-
-  return accessToken!;
+  return getAccessTokenForDrive('_default');
 }
 
-async function fetchAccessToken(): Promise<{ access_token?: string }> {
+/**
+ * Get access token for a specific drive (by cache key)
+ */
+async function getAccessTokenForDrive(cacheKey: string, driveConfig?: any): Promise<string> {
+  const cached = tokenCache.get(cacheKey);
+  if (cached && cached.expiry > Date.now()) return cached.token;
+
+  const tokenData = await fetchAccessTokenForDrive(driveConfig);
+  if (tokenData.access_token) {
+    tokenCache.set(cacheKey, { token: tokenData.access_token, expiry: Date.now() + 3500 * 1000 });
+  }
+  return tokenData.access_token || '';
+}
+
+async function fetchAccessTokenForDrive(driveConfig?: any): Promise<{ access_token?: string }> {
+  // Per-drive service account
+  if (driveConfig?._auth_type === 'service_account' && driveConfig._sa_json) {
+    const jwtToken = await generateGCPToken(driveConfig._sa_json);
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwtToken}`
+    });
+    return res.json();
+  }
+
+  // Per-drive OAuth credentials
+  if (driveConfig?._auth_type === 'oauth' && driveConfig._client_id) {
+    const res = await fetch('https://www.googleapis.com/oauth2/v4/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: buildQueryString({
+        client_id: driveConfig._client_id,
+        client_secret: driveConfig._client_secret,
+        refresh_token: driveConfig._refresh_token,
+        grant_type: 'refresh_token'
+      })
+    });
+    return res.json();
+  }
+
+  // Default: global config credentials
   const url = 'https://www.googleapis.com/oauth2/v4/token';
   let postData: Record<string, string>;
-
   if (config.auth.service_account && config.auth.service_account_json) {
     const jwtToken = await generateGCPToken(config.auth.service_account_json);
-    postData = {
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: jwtToken
-    };
+    postData = { grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwtToken };
   } else {
     postData = {
-      client_id: config.auth.client_id,
-      client_secret: config.auth.client_secret,
-      refresh_token: config.auth.refresh_token,
-      grant_type: 'refresh_token'
+      client_id: config.auth.client_id, client_secret: config.auth.client_secret,
+      refresh_token: config.auth.refresh_token, grant_type: 'refresh_token'
     };
   }
 
   const response = await retry(async () => {
     const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: buildQueryString(postData)
     });
     if (!res.ok) throw new Error('Token fetch failed');
     return res;
   });
-
   return response.json();
 }
 
-async function driveRequest(url: string, options: RequestInit = {}): Promise<Response> {
-  const token = await getAccessToken();
+async function driveRequest(url: string, options: RequestInit = {}, driveConfig?: any): Promise<Response> {
+  const cacheKey = driveConfig?._auth_type ? `drive_${driveConfig._client_id || driveConfig._sa_json?.client_email || 'default'}` : '_default';
+  const token = await getAccessTokenForDrive(cacheKey, driveConfig);
   const headers = {
     ...options.headers as Record<string, string>,
     Authorization: `Bearer ${token}`
@@ -84,6 +105,7 @@ export class GoogleDrive {
   public root: { id: string; name: string; protect_file_link: boolean };
   public root_type: DriveRootType = 0;
   public url_path_prefix: string;
+  private _driveConfig: any;
   
   private paths: Record<string, string> = {};
   private files: Record<string, DriveFile> = {};
@@ -91,18 +113,25 @@ export class GoogleDrive {
 
   constructor(order: number) {
     this.order = order;
-    const rootConfig = config.auth.roots[order];
+    const rootConfig = config.auth.roots[order] as any;
     this.root = {
       id: rootConfig.id,
       name: rootConfig.name,
       protect_file_link: rootConfig.protect_file_link || false
     };
+    // Store per-drive auth config
+    this._driveConfig = rootConfig._auth_type ? rootConfig : undefined;
     this.url_path_prefix = `/${order}:`;
     this.paths['/'] = this.root.id;
   }
 
+  private async driveReq(url: string, options: RequestInit = {}): Promise<Response> {
+    return driveRequest(url, options, this._driveConfig);
+  }
+
   async init(): Promise<void> {
-    await getAccessToken();
+    const cacheKey = this._driveConfig?._auth_type ? `drive_${this._driveConfig._client_id || this._driveConfig._sa_json?.client_email || 'default'}` : '_default';
+    await getAccessTokenForDrive(cacheKey, this._driveConfig);
     if (!config.auth.user_drive_real_root_id) {
       const rootObj = await this.findItemById('root');
       if (rootObj?.id) {
@@ -124,7 +153,7 @@ export class GoogleDrive {
     const isUserDrive = this.root_type === 0;
     const url = `https://www.googleapis.com/drive/v3/files/${id}?fields=${DEFAULT_FILE_FIELDS}${isUserDrive ? '' : '&supportsAllDrives=true'}`;
     
-    const res = await driveRequest(url);
+    const res = await this.driveReq(url);
     if (!res.ok) return null;
     return res.json();
   }
@@ -160,7 +189,7 @@ export class GoogleDrive {
     };
 
     const url = `https://www.googleapis.com/drive/v3/files?${buildQueryString(params)}`;
-    const res = await driveRequest(url);
+    const res = await this.driveReq(url);
     const data = await res.json() as { files: DriveFile[] };
     
     return data.files?.[0]?.id || null;
@@ -191,7 +220,7 @@ export class GoogleDrive {
     };
 
     const url = `https://www.googleapis.com/drive/v3/files?${buildQueryString(params)}`;
-    const res = await driveRequest(url);
+    const res = await this.driveReq(url);
     const data = await res.json() as { files: DriveFile[] };
     
     return data.files?.[0] || null;
@@ -223,7 +252,7 @@ export class GoogleDrive {
     if (pageToken) params.pageToken = pageToken;
 
     const url = `https://www.googleapis.com/drive/v3/files?${buildQueryString(params)}`;
-    const res = await driveRequest(url);
+    const res = await this.driveReq(url);
     const data = await res.json() as { files: DriveFile[]; nextPageToken?: string };
 
     return {
@@ -261,7 +290,7 @@ export class GoogleDrive {
     if (pageToken) params.pageToken = pageToken;
 
     const url = `https://www.googleapis.com/drive/v3/files?${buildQueryString(params)}`;
-    const res = await driveRequest(url);
+    const res = await this.driveReq(url);
     const data = await res.json() as { files: DriveFile[]; nextPageToken?: string };
 
     return {
