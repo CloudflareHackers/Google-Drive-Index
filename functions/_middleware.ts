@@ -16,13 +16,30 @@ CREATE TABLE IF NOT EXISTS config (
 CREATE TABLE IF NOT EXISTS drives (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  client_id TEXT NOT NULL,
-  client_secret TEXT NOT NULL,
-  refresh_token TEXT NOT NULL,
+  client_id TEXT NOT NULL DEFAULT '',
+  client_secret TEXT NOT NULL DEFAULT '',
+  refresh_token TEXT NOT NULL DEFAULT '',
   root_folder_id TEXT NOT NULL DEFAULT 'root',
   is_shared_drive INTEGER NOT NULL DEFAULT 0,
   enabled INTEGER NOT NULL DEFAULT 1,
   sort_order INTEGER NOT NULL DEFAULT 0,
+  auth_type TEXT NOT NULL DEFAULT 'oauth',
+  credential_id INTEGER DEFAULT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS credentials (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  client_id TEXT NOT NULL,
+  client_secret TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS service_accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  json_data TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 INSERT OR IGNORE INTO config (key, value) VALUES ('site_name', 'Google Drive Index');
