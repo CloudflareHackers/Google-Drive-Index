@@ -1,0 +1,5 @@
+/assets/*
+  Cache-Control: public, max-age=604800
+
+/api/*
+  Cache-Control: no-store

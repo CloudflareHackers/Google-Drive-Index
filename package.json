@@ -1,47 +1,17 @@
 {
-  "name": "@googledrive/index",
-  "version": "3.0.0",
-  "description": "Google Drive Index - A serverless Google Drive directory listing on Cloudflare Workers",
-  "private": false,
-  "main": "src/index.ts",
+  "name": "google-drive-index",
+  "version": "2.0.0",
+  "private": true,
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "publish": "wrangler deploy",
-    "start": "wrangler dev",
-    "lint": "eslint src/ assets/",
-    "lint:fix": "eslint src/ assets/ --fix",
-    "format": "prettier --write \"src/**/*.js\" \"assets/**/*.js\"",
-    "format:check": "prettier --check \"src/**/*.js\" \"assets/**/*.js\"",
-    "typecheck": "tsc --noEmit",
-    "check": "npm run lint && npm run format:check && npm run typecheck",
-    "precommit": "npm run check"
-  },
-  "keywords": [
-    "google-drive",
-    "cloudflare-workers",
-    "serverless",
-    "file-index",
-    "directory-listing"
-  ],
-  "author": "Parveen Bhadoo",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://gitlab.com/GoogleDriveIndex/Google-Drive-Index"
-  },
-  "bugs": {
-    "url": "https://gitlab.com/GoogleDriveIndex/Google-Drive-Index/-/issues"
-  },
-  "homepage": "https://gdi.js.org",
-  "engines": {
-    "node": ">=18.0.0"
+    "dev": "wrangler pages dev dist",
+    "build": "node build.mjs",
+    "deploy": "npm run build && wrangler pages deploy dist",
+    "db:create": "wrangler d1 create drive-index-db",
+    "db:migrate": "wrangler d1 execute drive-index-db --file=schema.sql"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260203.0",
-    "eslint": "^8.57.0",
-    "prettier": "^3.4.2",
-    "typescript": "^5.7.2",
-    "wrangler": "^3.99.0"
+    "@cloudflare/workers-types": "^4.20240117.0",
+    "esbuild": "^0.19.0",
+    "wrangler": "^3.0.0"
   }
 }
