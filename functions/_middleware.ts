@@ -53,21 +53,19 @@ INSERT OR IGNORE INTO config (key, value) VALUES ('theme', 'dark');
 let dbInitialized = false;
 
 export const onRequest: PagesFunction<{ DB: D1Database }> = async (context) => {
-  // Auto-initialize DB tables on first request
+  // Auto-initialize/migrate DB tables on first request
   if (!dbInitialized && context.env.DB) {
     try {
-      // Check if tables exist by trying a simple query
-      await context.env.DB.prepare('SELECT 1 FROM config LIMIT 1').first();
+      // Always run CREATE TABLE IF NOT EXISTS — safe to run multiple times
+      const statements = SCHEMA.split(';').filter(s => s.trim()).map(s => context.env.DB.prepare(s.trim()));
+      await context.env.DB.batch(statements);
+      // Migrate: add new columns to drives if missing
+      try { await context.env.DB.prepare("ALTER TABLE drives ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'oauth'").run(); } catch {}
+      try { await context.env.DB.prepare("ALTER TABLE drives ADD COLUMN credential_id INTEGER DEFAULT NULL").run(); } catch {}
       dbInitialized = true;
-    } catch {
-      // Tables don't exist, create them
-      try {
-        const statements = SCHEMA.split(';').filter(s => s.trim()).map(s => context.env.DB.prepare(s.trim()));
-        await context.env.DB.batch(statements);
-        dbInitialized = true;
-      } catch (e) {
-        console.error('DB init error:', e);
-      }
+    } catch (e) {
+      console.error('DB init error:', e);
+      dbInitialized = true; // Don't retry on every request
     }
   }
 
