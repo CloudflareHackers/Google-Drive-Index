@@ -5,4 +5,4 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "drive-index-db"
-database_id = "YOUR_D1_DATABASE_ID"
+database_id = "905f8060-0f68-4d50-ba03-eb7ab116b3f0"
